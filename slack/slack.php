@@ -6,35 +6,85 @@ require_once('config.php');
 
 class SlackPlugin extends Plugin
 {
-    var $config_class = "SlackPluginConfig";
+	var $config_class = "SlackPluginConfig";
 	
 	function bootstrap()
-	{		
-		Signal::connect('model.created', array($this, 'onTicketCreated'), 'Ticket');		
+	{
+		Signal::connect('model.created', array($this, 'onTicketCreated'), 'Ticket');
+		Signal::connect('model.created', array($this, 'onThreadEntryCreated'), 'ThreadEntry');
 	}
 
-	function onTicketCreated($ticket)
+	function onThreadEntryCreated($entry)
+	{
+		if ($entry->ht['thread_type'] == 'R') {
+			$this->onResponseCreated($entry);
+		} elseif ($entry->ht['thread_type'] == 'N') {
+			$this->onNoteCreated($entry);
+		} else {
+			// This 'Message' is already created by 'onTicketCreated'
+			//$this->onMessageCreated($entry);
+		}
+	}
+
+	function onResponseCreated($response)
+	{
+		$this->sendThreadEntryToSlack($response, 'Response', 'warning');
+	}
+
+	function onNoteCreated($note)
+	{
+		$this->sendThreadEntryToSlack($note, 'Note', 'good');
+	}
+
+	function onMessageCreated($message)
+	{
+		$this->sendThreadEntryToSlack($message, 'Message', 'warning');
+	}
+	
+	function sendThreadEntryToSlack($entry, $label, $color)
 	{
 		global $ost;
+
+		$ticketLink = $ost->getConfig()->getUrl().'scp/tickets.php?id='.$entry->getTicket()->getId();
+
+		$title = $entry->getTitle() ?: $label;
+		$body = $entry->getBody() ?: $entry->ht['body'] ?: 'No content';
 
 		$this->sendToSlack(
 			array(
 				'attachments' => array(
-					array(	
-						'pretext' => "New Ticket <" . $ost->getConfig()->getUrl() . "scp/tickets.php?id=" 
-									. $ticket->getId() . "|#" . $ticket->getNumber() . "> created",
-						'fallback' => "New Ticket <" . $ost->getConfig()->getUrl() . "scp/tickets.php?id=" 
-									. $ticket->getId() . "|#" . $ticket->getNumber() . "> created",
-						'color' => "#D00000",
-						'fields' => array(
-							array(
-								'title' => $ticket->getSubject(),
-								'value' => "created by " . $ticket->getName() . "(" . $ticket->getEmail() 
-											. ") in " . $ticket->getDeptName() . "(Department) via " 
-											. $ticket->getSource(),
-								'short' => False,
-							),											
-						),
+					array(
+						'pretext' => $label.' by '.$entry->getPoster(),
+						'fallback' => 'New '.$label.' in <'.$ticketLink.'> by '.$entry->getPoster(),
+						'title' => 'Ticket '.$entry->getTicket()->getNumber().': '.$title,
+						'title_link' => $ticketLink,
+						'color' => $color,
+						'text' => $this->escapeText($body)
+					),
+				),
+			)
+		);
+	}
+	
+	function onTicketCreated($ticket)
+	{
+		global $ost;
+
+		$ticketLink = $ost->getConfig()->getUrl().'scp/tickets.php?id='.$ticket->getId();
+
+		$title = $ticket->getSubject() ?: 'No subject';
+		$body = $ticket->getLastMessage()->getMessage() ?: 'No content';
+
+		$this->sendToSlack(
+			array(
+				'attachments' => array(
+					array(
+						'pretext' => 'by '.$ticket->getName().' ('.$ticket->getEmail().')',
+						'fallback' => 'New Ticket <'.$ticketLink.'> by '.$ticket->getName().' ('.$ticket->getEmail().')',
+						'title' => 'Ticket '.$ticket->getNumber().': '.$title,
+						'title_link' => $ticketLink,
+						'color' => "danger",
+						'text' => $this->escapeText($body)
 					),
 				),
 			)
@@ -42,31 +92,45 @@ class SlackPlugin extends Plugin
 	}
 	
 	function sendToSlack($payload)
-	{		
+	{
 		try {
+			global $ost;
+	
 			$data_string = utf8_encode(json_encode($payload));
 			$url = $this->getConfig()->get('slack-webhook-url');
-
-			$ch = curl_init($url);                                                                      			
-			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");                                                                     
-			curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);                                                                  
-			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);                                                                      
-			curl_setopt($ch, CURLOPT_HTTPHEADER, array(                                                                          
-				'Content-Type: application/json', 
-				'Content-Length: ' . strlen($data_string))                                                                       
+	
+			$ch = curl_init($url);
+			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+			curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+			curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+					'Content-Type: application/json',
+					'Content-Length: ' . strlen($data_string)
+				)
 			);
-
+	
 			if (curl_exec($ch) === false) {
 				throw new Exception($url . ' - ' . curl_error($ch));
 			} else {
 				$statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+	
 				if ($statusCode != '200') {
-					throw new Exception($url . ' Http code: ' . $statusCode);					
-				}				
+					throw new Exception($url . ' Http code: ' . $statusCode);
+				}
 			}
+
 			curl_close($ch);
 		} catch(Exception $e) {
 			error_log('Error posting to Slack. '. $e->getMessage());
 		}
+	}
+
+	function escapeText($text)
+	{
+		$text = str_replace('&', '&amp;', $text);
+		$text = str_replace('<', '&lt;', $text);
+		$text = str_replace('>', '&gt;', $text);
+
+		return $text;
 	}
 }
