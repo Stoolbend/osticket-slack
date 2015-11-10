@@ -15,6 +15,8 @@ class SlackPlugin extends Plugin
 
 	function onTicketCreated($ticket)
 	{
+		global $ost;
+
 		$this->sendToSlack(
 			array(
 				'attachments' => array(
@@ -41,9 +43,7 @@ class SlackPlugin extends Plugin
 	
 	function sendToSlack($payload)
 	{		
-		try {			
-			global $ost;
-
+		try {
 			$data_string = utf8_encode(json_encode($payload));
 			$url = $this->getConfig()->get('slack-webhook-url');
 
@@ -52,9 +52,9 @@ class SlackPlugin extends Plugin
 			curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);                                                                  
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);                                                                      
 			curl_setopt($ch, CURLOPT_HTTPHEADER, array(                                                                          
-				'Content-Type: application/json',                                                                                
+				'Content-Type: application/json', 
 				'Content-Length: ' . strlen($data_string))                                                                       
-			);	
+			);
 
 			if (curl_exec($ch) === false) {
 				throw new Exception($url . ' - ' . curl_error($ch));
