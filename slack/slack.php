@@ -10,19 +10,21 @@ class SlackPlugin extends Plugin
 	
 	function bootstrap()
 	{
-		Signal::connect('model.created', array($this, 'onTicketCreated'), 'Ticket');
+		//Signal::connect('model.created', array($this, 'onTicketCreated'), 'Ticket');
 		Signal::connect('model.created', array($this, 'onThreadEntryCreated'), 'ThreadEntry');
 	}
 
 	function onThreadEntryCreated($entry)
 	{
 		if ($entry->ht['thread_type'] == 'R') {
+			// Responses by staff
 			$this->onResponseCreated($entry);
 		} elseif ($entry->ht['thread_type'] == 'N') {
+			// Notes by staff or system
 			$this->onNoteCreated($entry);
 		} else {
-			// This 'Message' is already created by 'onTicketCreated'
-			//$this->onMessageCreated($entry);
+			// New tickets or responses by users
+			$this->onMessageCreated($entry);
 		}
 	}
 
@@ -38,7 +40,7 @@ class SlackPlugin extends Plugin
 
 	function onMessageCreated($message)
 	{
-		$this->sendThreadEntryToSlack($message, 'Message', 'warning');
+		$this->sendThreadEntryToSlack($message, 'Message', 'danger');
 	}
 	
 	function sendThreadEntryToSlack($entry, $label, $color)
@@ -127,6 +129,8 @@ class SlackPlugin extends Plugin
 
 	function escapeText($text)
 	{
+		$text = str_replace('<br />', ' ', $text);
+		$text = strip_tags($text);
 		$text = str_replace('&', '&amp;', $text);
 		$text = str_replace('<', '&lt;', $text);
 		$text = str_replace('>', '&gt;', $text);
