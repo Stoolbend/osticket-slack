@@ -28,16 +28,19 @@ class SlackPlugin extends Plugin
 		}
 	}
 
+	//Responses by staff - see onThreadEntryCreated()
 	function onResponseCreated($response)
 	{
 		$this->sendThreadEntryToSlack($response, 'Response', 'warning');
 	}
 
+	//Internal Notes by staff - see onThreadEntryCreated()
 	function onNoteCreated($note)
 	{
 		$this->sendThreadEntryToSlack($note, 'Note', 'good');
 	}
 
+	//New tickets or comments by users - see onThreadEntryCreated()
 	function onMessageCreated($message)
 	{
 		$this->sendThreadEntryToSlack($message, 'Message', 'danger');
@@ -52,6 +55,12 @@ class SlackPlugin extends Plugin
 		$title = $entry->getTitle() ?: $label;
 		$body = $entry->getBody() ?: $entry->ht['body'] ?: 'No content';
 
+		$dept = $entry->getTicket()->getDept();
+		if ($dept instanceof Dept) {
+			$id = $dept->getId();
+			$channel = self::getConfig()->get("slack_department_id_".$id);
+		}
+
 		$this->sendToSlack(
 			array(
 				'attachments' => array(
@@ -64,6 +73,7 @@ class SlackPlugin extends Plugin
 						'text' => $this->escapeText($body)
 					),
 				),
+				'channel' => $channel
 			)
 		);
 	}
@@ -100,8 +110,12 @@ class SlackPlugin extends Plugin
 	
 			$data_string = utf8_encode(json_encode($payload));
 			$url = $this->getConfig()->get('slack-webhook-url');
-	
+			
+			if (!function_exists('curl_init')){
+				error_log('osticket slackplugin error: cURL is not installed!');
+			}
 			$ch = curl_init($url);
+			
 			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
 			curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
