@@ -7,7 +7,7 @@ require_once('config.php');
 class SlackPlugin extends Plugin
 {
 	var $config_class = "SlackPluginConfig";
-	
+
 	function bootstrap()
 	{
 		//Signal::connect('model.created', array($this, 'onTicketCreated'), 'Ticket');
@@ -76,8 +76,31 @@ class SlackPlugin extends Plugin
 				'channel' => $channel
 			)
 		);
+
+		$dm_assigned_user = $this->getConfig()->get('notify-assigned-user-dm');
+		if ($dm_assigned_user && $entry->getTicket()->isAssigned()) {
+
+				$slack_user_name = strtolower(str_replace(' ', '.', $entry->getTicket()->getAssignee()));
+
+				$this->sendToSlack(
+					array(
+						'attachments' => array(
+							array(
+								'pretext' => $label.' by '.$entry->getPoster(),
+								'fallback' => 'New '.$label.' in <'.$ticketLink.'> by '.$entry->getPoster(),
+								'title' => 'Ticket '.$entry->getTicket()->getNumber().': '.$title,
+								'title_link' => $ticketLink,
+								'color' => $color,
+								'text' => $this->escapeText($body)
+							),
+						),
+						'channel' => '@'.$slack_user_name
+					)
+				);
+
+		}
 	}
-	
+
 	function onTicketCreated($ticket)
 	{
 		global $ost;
@@ -98,24 +121,24 @@ class SlackPlugin extends Plugin
 						'color' => "danger",
 						'text' => $this->escapeText($body)
 					),
-				),
+				)
 			)
 		);
 	}
-	
+
 	function sendToSlack($payload)
 	{
 		try {
 			global $ost;
-	
+
 			$data_string = utf8_encode(json_encode($payload));
 			$url = $this->getConfig()->get('slack-webhook-url');
-			
+
 			if (!function_exists('curl_init')){
 				error_log('osticket slackplugin error: cURL is not installed!');
 			}
 			$ch = curl_init($url);
-			
+
 			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
 			curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -124,12 +147,12 @@ class SlackPlugin extends Plugin
 					'Content-Length: ' . strlen($data_string)
 				)
 			);
-	
+
 			if (curl_exec($ch) === false) {
 				throw new Exception($url . ' - ' . curl_error($ch));
 			} else {
 				$statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-	
+
 				if ($statusCode != '200') {
 					throw new Exception($url . ' Http code: ' . $statusCode);
 				}

@@ -23,6 +23,10 @@ class SlackPluginConfig extends PluginConfig {
                 'label' => 'Webhook URL',
                 'configuration' => array('size'=>100, 'length'=>200),
             )),
+            'notify-assigned-user-dm' => new BooleanField(array(
+              'label' => 'DM Assigned User',
+                'configuration' => array('size'=>100, 'length'=>200),
+            )),
         );
 
         $options['department_title'] = new SectionBreakField(
